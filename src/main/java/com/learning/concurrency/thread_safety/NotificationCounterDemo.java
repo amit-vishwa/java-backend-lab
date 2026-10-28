@@ -3,6 +3,7 @@ package com.learning.concurrency.thread_safety;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class NotificationCounterDemo {
 
@@ -10,10 +11,12 @@ public class NotificationCounterDemo {
 
     private static int processedCount = 0;
 
+    private static final AtomicInteger atomicProcessedCount = new AtomicInteger(0);
+
     public static void main(String[] args) {
-        System.out.println("Processed count before: " + processedCount);
+        System.out.println("Processed count before: " + atomicProcessedCount.get());
         for (int i = 0; i < 5; i++) {
-            if (!incrementCounterWithSynchronization()) {
+            if (!incrementCounterWithAtomicInteger()) {
                 break;
             }
         }
@@ -70,6 +73,34 @@ public class NotificationCounterDemo {
                 return false;
             }
             System.out.println("Actual: " + processedCount);
+            return true;
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+            System.out.println("INTERRUPTED: Experiment incomplete.");
+            return false;
+        }
+    }
+
+    private static boolean incrementCounterWithAtomicInteger(){
+        ExecutorService executorService = Executors.newFixedThreadPool(8);
+        System.out.print("Expected: 100000 || ");
+        atomicProcessedCount.set(0);
+        for (int i = 0; i < 1_00_000; i++) {
+            executorService.submit(atomicProcessedCount::incrementAndGet);
+        }
+        executorService.shutdown();
+        try {
+            boolean isTerminated = executorService.awaitTermination(10, TimeUnit.SECONDS);
+            if (!isTerminated) {
+                System.out.println("TIMEOUT: Experiment incomplete.");
+                executorService.shutdownNow();
+                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                    System.out.println("WARNING: Workers may still be running.");
+                }
+                return false;
+            }
+            System.out.println("Actual: " + atomicProcessedCount.get());
             return true;
         } catch (InterruptedException e) {
             executorService.shutdownNow();
